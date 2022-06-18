@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import os
 import numpy as np
 
+
 class Linear_QNet(nn.Module):
 
     def __init__(self, input_size, hidden_size, output_size):
@@ -33,10 +34,11 @@ class QTrainer:
         self.gamma = gamma
         self.lr = lr
         self.model = model
-        if self.solver == 'adam':
-            self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        else:
-            self.optimizer = optim.SGD(model.parameters(), lr=self.lr)
+        self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        # if self.solver == 'adam':
+        #     self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        # else:
+        #     self.optimizer = optim.SGD(model.parameters(), lr=self.lr)
 
         self.criterion = nn.MSELoss()
 

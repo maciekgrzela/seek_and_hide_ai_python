@@ -15,6 +15,9 @@ class Direction(Enum):
     UP = 3
     DOWN = 4
 
+class EatingSource(Enum):
+    MEAT = 1
+    HERBS = 2
 
 class Angle(Enum):
     NINTY = 1,
@@ -25,7 +28,6 @@ class Angle(Enum):
 WIDTH = 1280
 HEIGHT = 960
 BLOCK_SIZE = 40
-SPEED = 100
 HIDERS_AMOUNT = 10
 WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
@@ -34,8 +36,9 @@ BLUE1 = (0, 0, 255)
 BLUE2 = (0, 100, 255)
 BLACK = (0, 0, 0)
 TRANSPARENT = (255, 255, 255, 0)
-EATING_LENGTH = 5
-GAMES_TO_USER_ACTIVATION = 1000
+EATING_LENGTH = 15
+
+GAMES_TO_END_BATTLE = 20
 
 AVAILABLE_ANGLES = [Angle.NINTY, Angle.ONE_EIGHTY, Angle.TWO_SEVENTY]
 
@@ -54,6 +57,9 @@ emoji = pygame.transform.scale(emoji, (BLOCK_SIZE, BLOCK_SIZE))
 
 emoji_eat = pygame.image.load("eating_face_yellow.png")
 emoji_eat = pygame.transform.scale(emoji_eat, (BLOCK_SIZE, BLOCK_SIZE))
+
+emoji_herbs_eat = pygame.image.load("eating_herbs_face_yellow.png")
+emoji_herbs_eat = pygame.transform.scale(emoji_herbs_eat, (BLOCK_SIZE, BLOCK_SIZE))
 
 player = pygame.image.load("smile_face_orange.png")
 player = pygame.transform.scale(player, (BLOCK_SIZE, BLOCK_SIZE))
@@ -80,23 +86,28 @@ AVAILABLE_OBSTACLES = [
 
 class SeekAndHideGame:
 
-    def __init__(self, w=WIDTH, h=HEIGHT):
+    def __init__(self, w=WIDTH, h=HEIGHT, game_mode=True, level="medium"):
         self.w = w
         self.h = h
 
+        self.level = level
+        self.score = 0
+        self.player_score = 0
+        self.assign_game_speed_based_on_level(level)
         self.display = pygame.display.set_mode((self.w, self.h))
         pygame.display.set_caption('EatTheMeat Game')
         self.clock = pygame.time.Clock()
         self.eating_length = 0
+        self.eating_source = EatingSource.MEAT
         self.player_eating_length = 0
-        self.player_activated = False
-        self.obstacles_placed = False
+        self.player_activated = game_mode
+        self.obstacles_placed = game_mode
         self.games_played = 0
         self.computed_obstacle_arrangement = []
         self.frame_iteration = 0
-        self.reset()
+        self.reset(player_activated=game_mode, obstacles_placed=game_mode)
 
-    def reset(self, player_activated=False, obstacles_placed=False):
+    def reset(self, player_activated=False, obstacles_placed=False, game_speed_reset=False):
         self.player_activated = player_activated
         self.direction = Direction.RIGHT
         self.player_direction = Direction.RIGHT
@@ -110,17 +121,49 @@ class SeekAndHideGame:
                               Point(self.player_head.x - BLOCK_SIZE, self.player_head.y),
                               Point(self.player_head.x - (2 * BLOCK_SIZE), self.player_head.y)]
 
-        self.score = 0
-        self.player_score = 0
+        if not self.player_activated:
+            self.score = 0
+
+        if not self.player_activated:
+            self.player_score = 0
+
         self.hiders = []
         self.obstacles = []
         self.frame_iteration = 0
+        self.eating_source = EatingSource.MEAT
+
+        if self.game_speed < self.get_speed_limit_for_level(self.level):
+            self.game_speed += 0.5
+
+        if game_speed_reset:
+            self.assign_game_speed_based_on_level(level=self.level)
 
         if self.player_activated or obstacles_placed:
             self._place_obstacles()
 
         self.games_played = 0 if self.games_played is None else self.games_played + 1
         self._place_hiders()
+
+    def get_speed_limit_for_level(self, level):
+        if level == "easy":
+            return 10
+        elif level == "medium":
+            return 20
+        elif level == "hard":
+            return 30
+        else:
+            return 500
+
+    def assign_game_speed_based_on_level(self, level):
+        if level == "easy":
+            self.game_speed = 5
+        elif level == "medium":
+            self.game_speed = 10
+        elif level == "hard":
+            self.game_speed = 20
+        else:
+            self.game_speed = 500
+
 
     def _place_hiders(self):
         for i in range(HIDERS_AMOUNT):
@@ -137,23 +180,9 @@ class SeekAndHideGame:
                     self.hiders.append(hider)
                     break
 
-    def random_obstacle_transition(self, obstacle, obstacle_index):
-        if obstacle_index == 0:
-            angle_index = 0
-            shift_ratio = 11
-        elif obstacle_index == 1:
-            angle_index = 1
-            shift_ratio = 17
-        elif obstacle_index == 2:
-            angle_index = 1
-            shift_ratio = 22
-        else:
-            angle_index = 2
-            shift_ratio = 5
-
-        return self.fixed_obstacle_transition(obstacle, angle_index, shift_ratio)
-
-    def fixed_obstacle_transition(self, obstacle, angle_index, shift_ratio):
+    def random_obstacle_transition(self, obstacle):
+        angle_index = random.randint(0, 2)
+        shift_ratio = random.randint(7, 22)
         random_shift = shift_ratio * BLOCK_SIZE
         angle = AVAILABLE_ANGLES[angle_index]
         transformed_obstacle = []
@@ -181,7 +210,7 @@ class SeekAndHideGame:
             while True:
                 overlap = False
                 out_of_canvas = False
-                transformed_obstacle = self.random_obstacle_transition(obstacle, obstacle_idx)
+                transformed_obstacle = self.random_obstacle_transition(obstacle)
                 for placed_obstacle in self.obstacles:
                     bordered_obstacle = self.get_bordered_obstacle(placed_obstacle)
                     for point in transformed_obstacle:
@@ -270,11 +299,6 @@ class SeekAndHideGame:
             reward = -10
             return reward, game_over, self.score, self.player_score
 
-        # if self.frame_iteration > 300:
-        #     game_over = True
-        #     reward = -100000
-        #     return reward, game_over, self.score, self.player_score
-
         if self.player_activated:
             if self.player_head in self.hiders:
                 self.player_score += 1
@@ -291,25 +315,41 @@ class SeekAndHideGame:
                 self.player_seeker.pop()
 
         if self.head in self.hiders:
-            self.score += 1
+            self.score += 1.0
             self.frame_iteration = 0
             eat = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
             eat.blit(emoji_eat, (0, 0))
             self.display.blit(eat, (self.head.x, self.head.y))
             self.eating_length = EATING_LENGTH
+            self.eating_source = EatingSource.MEAT
 
             if len(self.hiders) - 1 == 0:
                 self._place_hiders()
 
             reward = 10
             self.hiders.remove(self.head)
+        elif self.is_ai_in_obstacle():
+            self.score -= 0.5
+            self.frame_iteration = 0
+            eat = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
+            eat.blit(emoji_herbs_eat, (0, 0))
+            self.display.blit(eat, (self.head.x, self.head.y))
+            self.eating_length = EATING_LENGTH
+            self.eating_source = EatingSource.HERBS
         else:
             self.seeker.pop()
 
         self._update_ui()
-        self.clock.tick(SPEED)
+        self.clock.tick(self.game_speed)
 
         return reward, game_over, self.score, self.player_score
+
+    def is_ai_in_obstacle(self):
+        for obstacle in self.obstacles:
+            if self.head in obstacle:
+                return True
+
+        return False
 
     def is_collision(self, pt=None):
         if pt is None:
@@ -317,10 +357,6 @@ class SeekAndHideGame:
 
         if pt.x > self.w - BLOCK_SIZE or pt.x < 0 or pt.y > self.h - BLOCK_SIZE or pt.y < 0:
             return True
-
-        for obstacle in self.obstacles:
-            if pt in obstacle:
-                return True
 
         return False
 
@@ -352,69 +388,74 @@ class SeekAndHideGame:
             return emoji_icon
 
     def _update_ui(self):
-        # if self.games_played >= 50:
-            self.display.blit(bg, (0, 0))
+        self.display.blit(bg, (0, 0))
 
-            for pt in self.seeker:
+        for pt in self.seeker:
+            s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
+            s.set_alpha(0)
+            s.fill((255, 255, 255))
+            self.display.blit(s, (pt.x, pt.y))
+
+        if self.player_activated:
+            for pt in self.player_seeker:
                 s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
                 s.set_alpha(0)
                 s.fill((255, 255, 255))
                 self.display.blit(s, (pt.x, pt.y))
 
-            if self.player_activated:
-                for pt in self.player_seeker:
-                    s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
-                    s.set_alpha(0)
-                    s.fill((255, 255, 255))
-                    self.display.blit(s, (pt.x, pt.y))
+        s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
 
-            s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
+        emoji_transformed = self.perform_emoji_transformation(emoji, self.direction)
+        emoji_eat_transformed = self.perform_emoji_transformation(emoji_eat, self.direction)
+        emoji_herbs_eat_transformed = self.perform_emoji_transformation(emoji_herbs_eat, self.direction)
 
-            emoji_transformed = self.perform_emoji_transformation(emoji, self.direction)
-            emoji_eat_transformed = self.perform_emoji_transformation(emoji_eat, self.direction)
+        if self.player_activated:
+            player_transformed = self.perform_emoji_transformation(player, self.player_direction)
+            player_eat_transformed = self.perform_emoji_transformation(player_eat, self.player_direction)
 
-            if self.player_activated:
-                player_transformed = self.perform_emoji_transformation(player, self.player_direction)
-                player_eat_transformed = self.perform_emoji_transformation(player_eat, self.player_direction)
-
-                if self.player_eating_length <= 0:
-                    s.blit(player_transformed, (0, 0))
-                    self.display.blit(s, (self.player_seeker[0].x, self.player_seeker[0].y))
-                else:
-                    s.blit(player_eat_transformed, (0, 0))
-                    self.display.blit(s, (self.player_seeker[0].x, self.player_seeker[0].y))
-                    self.player_eating_length -= 1
-
-            if self.eating_length <= 0:
-                s.blit(emoji_transformed, (0, 0))
-                self.display.blit(s, (self.seeker[0].x, self.seeker[0].y))
+            if self.player_eating_length <= 0:
+                s.blit(player_transformed, (0, 0))
+                self.display.blit(s, (self.player_seeker[0].x, self.player_seeker[0].y))
             else:
+                s.blit(player_eat_transformed, (0, 0))
+                self.display.blit(s, (self.player_seeker[0].x, self.player_seeker[0].y))
+                self.player_eating_length -= 1
+
+        if self.eating_length <= 0:
+            s.blit(emoji_transformed, (0, 0))
+            self.display.blit(s, (self.seeker[0].x, self.seeker[0].y))
+        else:
+            if self.eating_source == EatingSource.MEAT:
                 s.blit(emoji_eat_transformed, (0, 0))
                 self.display.blit(s, (self.seeker[0].x, self.seeker[0].y))
-                self.eating_length -= 1
+            else:
+                s.blit(emoji_herbs_eat_transformed, (0, 0))
+                self.display.blit(s, (self.seeker[0].x, self.seeker[0].y))
 
-            for pt in self.hiders:
+            self.eating_length -= 1
+
+        for pt in self.hiders:
+            s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
+            s.blit(meat, (0, 0))
+            self.display.blit(s, (pt.x, pt.y))
+
+        for obstacle in self.obstacles:
+            for pt in obstacle:
                 s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
-                s.blit(meat, (0, 0))
+                s.blit(herbs, (0, 0))
                 self.display.blit(s, (pt.x, pt.y))
 
-            for obstacle in self.obstacles:
-                for pt in obstacle:
-                    s = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
-                    s.blit(herbs, (0, 0))
-                    self.display.blit(s, (pt.x, pt.y))
+        if self.player_activated:
+            text = font.render("Wynik AI: " + str(self.score), True, WHITE, BLACK)
+            text2 = font.render("Wynik gracza: " + str(self.player_score), True, WHITE, BLACK)
+            text3 = font.render("Do końca pozostało: " + str(GAMES_TO_END_BATTLE - (self.games_played - 1)) + " gier", True, WHITE, BLACK)
+            self.display.blit(text2, [0, 30])
+            self.display.blit(text3, [960, 0])
+        else:
+            text = font.render("AI is learning...", True, WHITE, BLACK)
 
-            if self.player_activated:
-                text = font.render("Score: " + str(self.score), True, WHITE, BLACK)
-                text2 = font.render("Player score: " + str(self.player_score), True, WHITE, BLACK)
-                self.display.blit(text2, [0, 30])
-            else:
-                text = font.render(
-                    "AI is learning... " + str((GAMES_TO_USER_ACTIVATION - self.games_played) + 2) + " games left", True,
-                    WHITE, BLACK)
-
-            self.display.blit(text, [0, 0])
-            pygame.display.flip()
+        self.display.blit(text, [0, 0])
+        pygame.display.flip()
 
     def _move(self, action, player_direction):
         clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]

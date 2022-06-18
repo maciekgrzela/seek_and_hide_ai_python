@@ -14,10 +14,11 @@ red_button = PhotoImage(file="./EatTheMeat_red_btn.png")
 yellow_button = PhotoImage(file="./EatTheMeat_yellow_btn.png")
 green_button = PhotoImage(file="./EatTheMeat_green_btn.png")
 
+
 def choice(level, solver):
     pop.destroy()
     root.destroy()
-    agent.RunAgent(level, solver)
+    agent.RunAgent(level, solver, True)
 
 
 def train_level(level):
@@ -36,8 +37,8 @@ def train_level(level):
     pop.mainloop()
 
 
-Button(root, text='35 gier', image=green_button, bg='white', relief=FLAT, borderwidth=0, command=lambda: train_level('easy'), compound=CENTER).pack(side=BOTTOM, padx=50)
-Button(root, text='50 gier', image=yellow_button, bg='white', relief=FLAT, borderwidth=0, command=lambda: train_level('medium'), compound=CENTER).pack(side=BOTTOM)
-Button(root, text='85 gier', image=red_button, bg='white', relief=FLAT, borderwidth=0, command=lambda: train_level('hard'), compound=CENTER).pack(side=BOTTOM)
+Button(root, text='Łatwy', image=green_button, bg='white', relief=FLAT, borderwidth=0, command=lambda: train_level('easy'), compound=CENTER).pack(side=BOTTOM, padx=50)
+Button(root, text='Średni', image=yellow_button, bg='white', relief=FLAT, borderwidth=0, command=lambda: train_level('medium'), compound=CENTER).pack(side=BOTTOM)
+Button(root, text='Trudny', image=red_button, bg='white', relief=FLAT, borderwidth=0, command=lambda: train_level('hard'), compound=CENTER).pack(side=BOTTOM)
 
 root.mainloop()
